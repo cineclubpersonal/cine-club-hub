@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import { Film, Shield } from "lucide-react";
 import MovieCard from "@/components/MovieCard";
+import PublishBox from "@/components/PublishBox";
 import type { Tables } from "@/integrations/supabase/types";
 
 type Pelicula = Tables<"peliculas">;
@@ -14,7 +15,7 @@ const Index = () => {
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
 
-  useEffect(() => {
+  const fetchPeliculas = useCallback(() => {
     supabase
       .from("peliculas")
       .select("*")
@@ -24,6 +25,10 @@ const Index = () => {
         setLoading(false);
       });
   }, []);
+
+  useEffect(() => {
+    fetchPeliculas();
+  }, [fetchPeliculas]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -56,10 +61,13 @@ const Index = () => {
         </div>
       </header>
 
-      {/* Hero */}
-      <section className="container mx-auto px-4 pt-12 pb-4">
-        <h2 className="text-5xl md:text-7xl font-display text-foreground mb-2">PELÍCULAS</h2>
-        <p className="text-muted-foreground text-lg">Tu colección de cine privada</p>
+      {/* Hero + Publish */}
+      <section className="container mx-auto px-4 pt-12 pb-4 space-y-6">
+        <div>
+          <h2 className="text-5xl md:text-7xl font-display text-foreground mb-2">PELÍCULAS</h2>
+          <p className="text-muted-foreground text-lg">Tu colección de cine privada</p>
+        </div>
+        <PublishBox onPublished={fetchPeliculas} />
       </section>
 
       {/* Grid */}
