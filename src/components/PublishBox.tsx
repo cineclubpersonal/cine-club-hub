@@ -1,16 +1,14 @@
 import { useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Upload, Link, Film, X, Loader2 } from "lucide-react";
+import { Upload, Link, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 type Mode = "link" | "upload" | null;
 
 const PublishBox = ({ onPublished }: { onPublished: () => void }) => {
-  const { user } = useAuth();
   const [mode, setMode] = useState<Mode>(null);
   const [titulo, setTitulo] = useState("");
   const [descripcion, setDescripcion] = useState("");
@@ -19,18 +17,6 @@ const PublishBox = ({ onPublished }: { onPublished: () => void }) => {
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  if (!user) {
-    return (
-      <div className="bg-card border border-border rounded-lg p-6 text-center animate-fade-in">
-        <Film className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-        <p className="text-foreground font-semibold mb-1">¿Quieres compartir contenido?</p>
-        <p className="text-muted-foreground text-sm">
-          <a href="/login" className="text-primary hover:underline">Regístrate o inicia sesión</a> para publicar películas y videos.
-        </p>
-      </div>
-    );
-  }
 
   const reset = () => {
     setMode(null);
@@ -89,19 +75,11 @@ const PublishBox = ({ onPublished }: { onPublished: () => void }) => {
       <div className="bg-card border border-border rounded-lg p-5 animate-fade-in">
         <p className="text-sm text-muted-foreground mb-3">Publicar nuevo contenido</p>
         <div className="flex gap-3">
-          <Button
-            variant="secondary"
-            className="flex-1"
-            onClick={() => setMode("upload")}
-          >
+          <Button variant="secondary" className="flex-1" onClick={() => setMode("upload")}>
             <Upload className="h-4 w-4 mr-2" />
             Subir archivo
           </Button>
-          <Button
-            variant="secondary"
-            className="flex-1"
-            onClick={() => setMode("link")}
-          >
+          <Button variant="secondary" className="flex-1" onClick={() => setMode("link")}>
             <Link className="h-4 w-4 mr-2" />
             Pegar enlace
           </Button>
@@ -123,62 +101,19 @@ const PublishBox = ({ onPublished }: { onPublished: () => void }) => {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-3">
-        <Input
-          placeholder="Título *"
-          value={titulo}
-          onChange={(e) => setTitulo(e.target.value)}
-          required
-          className="bg-secondary border-border"
-        />
-        <Textarea
-          placeholder="Descripción (opcional)"
-          value={descripcion}
-          onChange={(e) => setDescripcion(e.target.value)}
-          className="bg-secondary border-border resize-none"
-          rows={2}
-        />
-        <Input
-          placeholder="URL de portada (opcional)"
-          value={portadaUrl}
-          onChange={(e) => setPortadaUrl(e.target.value)}
-          className="bg-secondary border-border"
-        />
+        <Input placeholder="Título *" value={titulo} onChange={(e) => setTitulo(e.target.value)} required className="bg-secondary border-border" />
+        <Textarea placeholder="Descripción (opcional)" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} className="bg-secondary border-border resize-none" rows={2} />
+        <Input placeholder="URL de portada (opcional)" value={portadaUrl} onChange={(e) => setPortadaUrl(e.target.value)} className="bg-secondary border-border" />
 
         {mode === "link" ? (
-          <Input
-            placeholder="URL del video (YouTube, Vimeo, Drive, etc.) *"
-            value={videoUrl}
-            onChange={(e) => setVideoUrl(e.target.value)}
-            required
-            className="bg-secondary border-border"
-          />
+          <Input placeholder="URL del video (YouTube, Vimeo, Drive, etc.) *" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} required className="bg-secondary border-border" />
         ) : (
           <div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="video/*,audio/*"
-              onChange={handleFileChange}
-              className="hidden"
-            />
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full border-dashed"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {file ? (
-                <span className="truncate">{file.name}</span>
-              ) : (
-                <>
-                  <Upload className="h-4 w-4 mr-2" />
-                  Seleccionar archivo de video
-                </>
-              )}
+            <input ref={fileInputRef} type="file" accept="video/*,audio/*" onChange={handleFileChange} className="hidden" />
+            <Button type="button" variant="outline" className="w-full border-dashed" onClick={() => fileInputRef.current?.click()}>
+              {file ? <span className="truncate">{file.name}</span> : <><Upload className="h-4 w-4 mr-2" />Seleccionar archivo de video</>}
             </Button>
-            {mode === "upload" && !file && (
-              <p className="text-xs text-muted-foreground mt-1">Formatos: MP4, WebM, MOV, etc.</p>
-            )}
+            {mode === "upload" && !file && <p className="text-xs text-muted-foreground mt-1">Formatos: MP4, WebM, MOV, etc.</p>}
           </div>
         )}
 
