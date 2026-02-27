@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       peliculas: {
         Row: {
+          categoria: Database["public"]["Enums"]["categoria_type"]
           created_at: string
           descripcion: string | null
           id: string
@@ -24,6 +25,7 @@ export type Database = {
           video_url: string
         }
         Insert: {
+          categoria?: Database["public"]["Enums"]["categoria_type"]
           created_at?: string
           descripcion?: string | null
           id?: string
@@ -32,6 +34,7 @@ export type Database = {
           video_url: string
         }
         Update: {
+          categoria?: Database["public"]["Enums"]["categoria_type"]
           created_at?: string
           descripcion?: string | null
           id?: string
@@ -74,6 +77,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user"
+      categoria_type: "peliculas" | "series" | "conciertos"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -202,6 +206,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
+      categoria_type: ["peliculas", "series", "conciertos"],
     },
   },
 } as const
