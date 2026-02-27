@@ -1,12 +1,23 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Upload, Link, X, Loader2 } from "lucide-react";
+import { Upload, Link, X, Loader2, CheckCircle2, Film } from "lucide-react";
 import { toast } from "sonner";
+import Uppy from "@uppy/core";
+import Tus from "@uppy/tus";
+import "@uppy/core/dist/style.min.css";
+import "@uppy/dashboard/dist/style.min.css";
 
 type Mode = "link" | "upload" | null;
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const TUS_ENDPOINT = `${SUPABASE_URL}/storage/v1/upload/resumable`;
+const BUCKET = "media";
+// 6 MB chunks for reliable large file uploads
+const CHUNK_SIZE = 6 * 1024 * 1024;
 
 const PublishBox = ({ onPublished }: { onPublished: () => void }) => {
   const [mode, setMode] = useState<Mode>(null);
@@ -14,43 +25,124 @@ const PublishBox = ({ onPublished }: { onPublished: () => void }) => {
   const [descripcion, setDescripcion] = useState("");
   const [portadaUrl, setPortadaUrl] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
-  const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const reset = () => {
+  // Upload state
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uppyRef = useRef<Uppy | null>(null);
+
+  // Initialize Uppy once
+  useEffect(() => {
+    const uppy = new Uppy({
+      restrictions: {
+        maxNumberOfFiles: 1,
+        allowedFileTypes: ["video/*", "audio/*"],
+      },
+      autoProceed: true,
+    });
+
+    uppy.use(Tus, {
+      endpoint: TUS_ENDPOINT,
+      headers: {
+        authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        "x-upsert": "true",
+      },
+      chunkSize: CHUNK_SIZE,
+      allowedMetaFields: ["bucketName", "objectName", "contentType", "cacheControl"],
+      removeFingerprintOnSuccess: true,
+    });
+
+    uppy.on("file-added", (file) => {
+      const objectName = `${crypto.randomUUID()}.${file.name?.split(".").pop() || "mp4"}`;
+      uppy.setFileMeta(file.id, {
+        bucketName: BUCKET,
+        objectName,
+        contentType: file.type || "video/mp4",
+        cacheControl: "3600",
+      });
+      setSelectedFileName(file.name || "archivo");
+      setUploading(true);
+      setUploadProgress(0);
+      setUploadedUrl(null);
+    });
+
+    uppy.on("progress", (progress) => {
+      setUploadProgress(progress ?? 0);
+    });
+
+    uppy.on("upload-success", (file) => {
+      if (file) {
+        const objectName = file.meta.objectName as string;
+        const { data } = supabase.storage.from(BUCKET).getPublicUrl(objectName);
+        setUploadedUrl(data.publicUrl);
+        setUploading(false);
+        setUploadProgress(100);
+        toast.success("Archivo subido correctamente");
+      }
+    });
+
+    uppy.on("upload-error", (_file, error) => {
+      setUploading(false);
+      toast.error("Error al subir: " + (error?.message || "Error desconocido"));
+    });
+
+    uppyRef.current = uppy;
+
+    return () => {
+      uppy.cancelAll();
+      uppy.logout();
+    };
+  }, []);
+
+  const reset = useCallback(() => {
     setMode(null);
     setTitulo("");
     setDescripcion("");
     setPortadaUrl("");
     setVideoUrl("");
-    setFile(null);
-  };
+    setUploadProgress(0);
+    setUploadedUrl(null);
+    setUploading(false);
+    setSelectedFileName(null);
+    uppyRef.current?.cancelAll();
+  }, []);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (f) setFile(f);
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !uppyRef.current) return;
+
+    // Clear previous files
+    uppyRef.current.cancelAll();
+
+    try {
+      uppyRef.current.addFile({
+        name: file.name,
+        type: file.type,
+        data: file,
+        source: "local",
+      });
+    } catch (err: any) {
+      toast.error(err.message || "No se pudo agregar el archivo");
+    }
+
+    // Reset input so same file can be re-selected
+    e.target.value = "";
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
 
-    let finalVideoUrl = videoUrl;
+    const finalVideoUrl = mode === "upload" ? uploadedUrl : videoUrl;
 
-    if (mode === "upload" && file) {
-      const ext = file.name.split(".").pop();
-      const path = `${crypto.randomUUID()}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from("media").upload(path, file);
-
-      if (uploadError) {
-        toast.error("Error al subir archivo: " + uploadError.message);
-        setSubmitting(false);
-        return;
-      }
-
-      const { data: urlData } = supabase.storage.from("media").getPublicUrl(path);
-      finalVideoUrl = urlData.publicUrl;
+    if (!finalVideoUrl) {
+      toast.error("Falta la URL del video");
+      setSubmitting(false);
+      return;
     }
 
     const { error } = await supabase.from("peliculas").insert({
@@ -70,6 +162,7 @@ const PublishBox = ({ onPublished }: { onPublished: () => void }) => {
     setSubmitting(false);
   };
 
+  // ── Mode selector ──
   if (!mode) {
     return (
       <div className="bg-card border border-border rounded-lg p-5 animate-fade-in">
@@ -88,12 +181,13 @@ const PublishBox = ({ onPublished }: { onPublished: () => void }) => {
     );
   }
 
+  // ── Form ──
   return (
     <div className="bg-card border border-border rounded-lg p-5 animate-fade-in">
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm font-semibold text-foreground flex items-center gap-2">
           {mode === "upload" ? <Upload className="h-4 w-4 text-primary" /> : <Link className="h-4 w-4 text-primary" />}
-          {mode === "upload" ? "Subir archivo" : "Enlace externo"}
+          {mode === "upload" ? "Subir archivo (reanudable)" : "Enlace externo"}
         </p>
         <button onClick={reset} className="text-muted-foreground hover:text-foreground transition-colors">
           <X className="h-4 w-4" />
@@ -108,16 +202,74 @@ const PublishBox = ({ onPublished }: { onPublished: () => void }) => {
         {mode === "link" ? (
           <Input placeholder="URL del video (YouTube, Vimeo, Drive, etc.) *" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} required className="bg-secondary border-border" />
         ) : (
-          <div>
-            <input ref={fileInputRef} type="file" accept="video/*,audio/*" onChange={handleFileChange} className="hidden" />
-            <Button type="button" variant="outline" className="w-full border-dashed" onClick={() => fileInputRef.current?.click()}>
-              {file ? <span className="truncate">{file.name}</span> : <><Upload className="h-4 w-4 mr-2" />Seleccionar archivo de video</>}
-            </Button>
-            {mode === "upload" && !file && <p className="text-xs text-muted-foreground mt-1">Formatos: MP4, WebM, MOV, etc.</p>}
+          <div className="space-y-2">
+            <input ref={fileInputRef} type="file" accept="video/*,audio/*" onChange={handleFileSelect} className="hidden" />
+
+            {/* Upload zone */}
+            {!uploadedUrl && !uploading && (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full border-2 border-dashed border-border rounded-lg p-8 flex flex-col items-center gap-3 text-muted-foreground hover:border-primary/50 hover:text-foreground transition-all"
+              >
+                <Film className="h-10 w-10 text-primary/60" />
+                <span className="text-sm font-medium">Arrastra o selecciona un archivo de video</span>
+                <span className="text-xs text-muted-foreground/70">Soporta archivos grandes (GB) con subida reanudable</span>
+              </button>
+            )}
+
+            {/* Uploading progress */}
+            {uploading && (
+              <div className="border border-border rounded-lg p-4 space-y-3">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="h-5 w-5 text-primary animate-spin shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-foreground font-medium truncate">{selectedFileName}</p>
+                    <p className="text-xs text-muted-foreground">Subiendo… {uploadProgress}%</p>
+                  </div>
+                </div>
+                <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-primary h-full rounded-full transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground/70">
+                  La subida es reanudable. Si se interrumpe, vuelve a seleccionar el mismo archivo.
+                </p>
+              </div>
+            )}
+
+            {/* Upload complete */}
+            {uploadedUrl && !uploading && (
+              <div className="border border-primary/30 bg-primary/5 rounded-lg p-4 flex items-center gap-3">
+                <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-foreground font-medium truncate">{selectedFileName}</p>
+                  <p className="text-xs text-muted-foreground">Subido correctamente</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUploadedUrl(null);
+                    setSelectedFileName(null);
+                    setUploadProgress(0);
+                    uppyRef.current?.cancelAll();
+                  }}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
           </div>
         )}
 
-        <Button type="submit" disabled={submitting || (mode === "upload" && !file)} className="w-full">
+        <Button
+          type="submit"
+          disabled={submitting || (mode === "upload" && !uploadedUrl) || uploading}
+          className="w-full"
+        >
           {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
           {submitting ? "Publicando..." : "Publicar"}
         </Button>
