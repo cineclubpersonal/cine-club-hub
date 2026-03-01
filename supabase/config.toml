@@ -1,1 +1,4 @@
 project_id = "olrfqzxmueksunpafvhj"
+
+[functions.s3-multipart]
+verify_jwt = false
