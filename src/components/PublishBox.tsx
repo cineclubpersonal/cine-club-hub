@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Upload, Link, X, Loader2, CheckCircle2, Film } from "lucide-react";
 import { toast } from "sonner";
 import Uppy from "@uppy/core";
-import Tus from "@uppy/tus";
+import AwsS3Multipart from "@uppy/aws-s3";
 import "@uppy/core/dist/style.min.css";
 import "@uppy/dashboard/dist/style.min.css";
 
@@ -14,10 +14,7 @@ type Mode = "link" | "upload" | null;
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-const TUS_ENDPOINT = `${SUPABASE_URL}/storage/v1/upload/resumable`;
-const BUCKET = "media";
-// 6 MB chunks for reliable large file uploads
-const CHUNK_SIZE = 6 * 1024 * 1024;
+const EDGE_FN_URL = `${SUPABASE_URL}/functions/v1/s3-multipart`;
 
 const PublishBox = ({ onPublished }: { onPublished: () => void }) => {
   const [mode, setMode] = useState<Mode>(null);
@@ -37,6 +34,19 @@ const PublishBox = ({ onPublished }: { onPublished: () => void }) => {
 
   // Initialize Uppy once
   useEffect(() => {
+    async function edgeFetch(action: string, body: Record<string, unknown>) {
+      const res = await fetch(`${EDGE_FN_URL}?action=${action}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+
     const uppy = new Uppy({
       restrictions: {
         maxNumberOfFiles: 1,
@@ -45,25 +55,33 @@ const PublishBox = ({ onPublished }: { onPublished: () => void }) => {
       autoProceed: true,
     });
 
-    uppy.use(Tus, {
-      endpoint: TUS_ENDPOINT,
-      headers: {
-        authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        "x-upsert": "true",
+    uppy.use(AwsS3Multipart, {
+      shouldUseMultipart: true,
+      createMultipartUpload: async (file) => {
+        const { key, uploadId } = await edgeFetch("createMultipartUpload", {
+          filename: file.name || "video.mp4",
+          contentType: file.type || "video/mp4",
+        });
+        return { key, uploadId };
       },
-      chunkSize: CHUNK_SIZE,
-      allowedMetaFields: ["bucketName", "objectName", "contentType", "cacheControl"],
-      removeFingerprintOnSuccess: true,
-    });
+      listParts: async (_file, { key, uploadId }) => {
+        const { parts } = await edgeFetch("listParts", { key, uploadId });
+        return parts;
+      },
+      signPart: async (_file, { key, uploadId, partNumber }) => {
+        const { url } = await edgeFetch("signPart", { key, uploadId, partNumber });
+        return { url };
+      },
+      completeMultipartUpload: async (_file, { key, uploadId, parts }) => {
+        const { location } = await edgeFetch("completeMultipartUpload", { key, uploadId, parts });
+        return { location };
+      },
+      abortMultipartUpload: async (_file, { key, uploadId }) => {
+        await edgeFetch("abortMultipartUpload", { key, uploadId });
+      },
+    } as any);
 
     uppy.on("file-added", (file) => {
-      const objectName = `${crypto.randomUUID()}.${file.name?.split(".").pop() || "mp4"}`;
-      uppy.setFileMeta(file.id, {
-        bucketName: BUCKET,
-        objectName,
-        contentType: file.type || "video/mp4",
-        cacheControl: "3600",
-      });
       setSelectedFileName(file.name || "archivo");
       setUploading(true);
       setUploadProgress(0);
@@ -76,12 +94,15 @@ const PublishBox = ({ onPublished }: { onPublished: () => void }) => {
 
     uppy.on("upload-success", (file) => {
       if (file) {
-        const objectName = file.meta.objectName as string;
-        const { data } = supabase.storage.from(BUCKET).getPublicUrl(objectName);
-        setUploadedUrl(data.publicUrl);
+        const key = (file as any).s3Multipart?.key || (file.meta as any).key;
+        // Build public S3 URL from the key
+        const publicUrl = key
+          ? `https://${import.meta.env.VITE_S3_BUCKET_DOMAIN || "s3.amazonaws.com"}/${key}`
+          : (file.response as any)?.uploadURL || "";
+        setUploadedUrl(publicUrl);
         setUploading(false);
         setUploadProgress(100);
-        toast.success("Archivo subido correctamente");
+        toast.success("Archivo subido correctamente a S3");
       }
     });
 
