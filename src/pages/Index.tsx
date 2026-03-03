@@ -191,7 +191,7 @@ const Index = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                   {items.map((p, i) => (
                     <div key={p.id} className="animate-fade-in" style={{ animationDelay: `${i * 0.04}s` }}>
-                      <MovieCard pelicula={p} />
+                      <MovieCard pelicula={p} onUpdated={refetch} />
                     </div>
                   ))}
                 </div>
