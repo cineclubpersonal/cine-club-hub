@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
-import { Film, Play, Clapperboard, Tv, Music } from "lucide-react";
+import { Film, Play, Clapperboard, Tv, Music as MusicIcon } from "lucide-react";
 import MovieCard from "@/components/MovieCard";
 import PublishBox from "@/components/PublishBox";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -13,7 +13,7 @@ type Categoria = Database["public"]["Enums"]["categoria_type"];
 const CATEGORIAS: { value: Categoria; label: string; icon: React.ReactNode }[] = [
   { value: "peliculas", label: "Películas", icon: <Clapperboard className="h-4 w-4" /> },
   { value: "series", label: "Series", icon: <Tv className="h-4 w-4" /> },
-  { value: "conciertos", label: "Conciertos", icon: <Music className="h-4 w-4" /> },
+  { value: "conciertos", label: "Conciertos", icon: <MusicIcon className="h-4 w-4" /> },
 ];
 
 const Index = () => {
@@ -69,6 +69,13 @@ const Index = () => {
             <Film className="h-6 w-6 text-primary" />
             <span className="text-2xl font-display text-foreground tracking-widest">CINE CLUB</span>
           </div>
+          <button
+            onClick={() => navigate("/musica")}
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <MusicIcon className="h-4 w-4" />
+            Música
+          </button>
         </div>
       </header>
 

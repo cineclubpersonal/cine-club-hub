@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      musica: {
+        Row: {
+          album: string | null
+          anio: number | null
+          artista: string | null
+          audio_url: string
+          created_at: string
+          duracion: string | null
+          genero: string
+          id: string
+          portada_url: string | null
+          titulo: string
+        }
+        Insert: {
+          album?: string | null
+          anio?: number | null
+          artista?: string | null
+          audio_url: string
+          created_at?: string
+          duracion?: string | null
+          genero?: string
+          id?: string
+          portada_url?: string | null
+          titulo: string
+        }
+        Update: {
+          album?: string | null
+          anio?: number | null
+          artista?: string | null
+          audio_url?: string
+          created_at?: string
+          duracion?: string | null
+          genero?: string
+          id?: string
+          portada_url?: string | null
+          titulo?: string
+        }
+        Relationships: []
+      }
       peliculas: {
         Row: {
           categoria: Database["public"]["Enums"]["categoria_type"]
