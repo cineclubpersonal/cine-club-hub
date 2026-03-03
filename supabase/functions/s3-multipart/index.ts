@@ -5,6 +5,7 @@ import {
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
   ListPartsCommand,
+  DeleteObjectCommand,
 } from "npm:@aws-sdk/client-s3@3.600.0";
 import { getSignedUrl } from "npm:@aws-sdk/s3-request-presigner@3.600.0";
 
@@ -108,6 +109,21 @@ Deno.serve(async (req) => {
         })
       );
       return json({ success: true });
+    }
+
+    if (action === "deleteObjects") {
+      const keys: string[] = body.keys || [];
+      const results = [];
+      for (const key of keys) {
+        if (!key) continue;
+        try {
+          await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
+          results.push({ key, deleted: true });
+        } catch (e) {
+          results.push({ key, deleted: false, error: (e as Error).message });
+        }
+      }
+      return json({ results });
     }
 
     return json({ error: "Unknown action" }, 400);
